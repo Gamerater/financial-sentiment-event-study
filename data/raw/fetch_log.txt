@@ -1,0 +1,3 @@
+2026-09-19 13:43:07 | success=True | total_headlines=892 | new_this_run=150
+2026-09-19 13:45:00 | success=True | total_headlines=933 | new_this_run=41
+2026-09-19 13:46:03 | success=True | total_headlines=933 | new_this_run=0

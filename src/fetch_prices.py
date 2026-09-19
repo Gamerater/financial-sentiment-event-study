@@ -24,13 +24,20 @@ INTERVAL = "1d"        # daily bars (enough resolution for a short-term event st
 RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
 
 
-def fetch_price_history(ticker: str, period: str = PERIOD, interval: str = INTERVAL) -> pd.DataFrame:
+def fetch_price_history(ticker: str, period: str = PERIOD, interval: str = INTERVAL,
+                         timeout: int = 15) -> pd.DataFrame:
     """
     Fetch OHLCV history for one ticker.
     Returns a DataFrame indexed by Date with columns: Open, High, Low, Close, Volume
+
+    IMPORTANT: yfinance does not apply a network timeout by default, which means
+    a stalled connection (common when running unattended via Task Scheduler with
+    no one around to notice/retry) can hang the whole script forever. We pass an
+    explicit `timeout` (seconds) so a bad connection raises an error instead of
+    hanging indefinitely.
     """
     t = yf.Ticker(ticker)
-    hist = t.history(period=period, interval=interval, auto_adjust=True)
+    hist = t.history(period=period, interval=interval, auto_adjust=True, timeout=timeout)
     if hist.empty:
         raise ValueError(f"No price data returned for {ticker}. Check ticker symbol or internet connection.")
 

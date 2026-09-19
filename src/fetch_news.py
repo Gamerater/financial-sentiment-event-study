@@ -40,13 +40,35 @@ HEADERS = {
 }
 
 
-def fetch_yfinance_news(ticker: str) -> pd.DataFrame:
+def fetch_yfinance_news(ticker: str, timeout: int = 15) -> pd.DataFrame:
     """
     Pulls current news items from yfinance for one ticker.
     Returns a DataFrame with columns: ticker, datetime, title, publisher, link, source
+
+    IMPORTANT: different yfinance versions expose news fetching differently, and
+    not all versions' get_news() accept a `timeout` kwarg even when the method
+    exists. We try the newer signature first and gracefully fall back to the
+    plain call (and then to the `.news` property) rather than erroring out --
+    this keeps the script portable across yfinance versions without needing to
+    pin an exact version.
     """
     t = yf.Ticker(ticker)
-    items = t.news or []
+    items = None
+
+    if hasattr(t, "get_news"):
+        try:
+            items = t.get_news(timeout=timeout)
+        except TypeError:
+            # This installed version's get_news() doesn't accept `timeout`
+            try:
+                items = t.get_news()
+            except Exception:
+                items = None
+
+    if items is None:
+        items = t.news
+
+    items = items or []
 
     rows = []
     for item in items:
