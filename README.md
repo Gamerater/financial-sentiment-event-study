@@ -119,6 +119,53 @@ statistical pipeline correctly detects a real signal when one exists. **Any
 results from this synthetic data must be clearly labeled as such** and are for
 pipeline demonstration only — not to be presented as the paper's actual findings.
 
+## Automating Daily Data Collection (recommended if you have weeks before your deadline)
+
+Since news sample size determines statistical power, the single most valuable
+thing you can do is let `src/daily_fetch.py` run automatically once a day for
+several weeks, rather than remembering to run it manually.
+
+### Windows: Task Scheduler setup
+
+1. Open **Task Scheduler** (search for it in the Start menu).
+2. Click **Create Basic Task** (right panel).
+3. Name it e.g. `Financial Sentiment Daily Fetch`, click Next.
+4. Trigger: choose **Daily**, pick a time (e.g. 9:00 AM), click Next.
+5. Action: choose **Start a program**, click Next.
+6. **Program/script**: the full path to your Python executable, e.g.
+   `C:\Users\YOURNAME\AppData\Local\Programs\Python\Python311\python.exe`
+   (find yours by running `where python` in PowerShell)
+7. **Add arguments**: `src\daily_fetch.py`
+8. **Start in**: the full path to your project folder, e.g.
+   `D:\Projects\College Projects\Major Project`
+9. Click Finish.
+
+To verify it's working, right-click the task in Task Scheduler and choose
+**Run**, then check `data/raw/fetch_log.txt` for a new log line.
+
+### Checking progress anytime
+
+```bash
+python src/check_progress.py
+```
+
+This shows total headlines collected, per-ticker breakdown, and whether your
+sample size is likely large enough yet for meaningful statistics — without
+running the slower full pipeline.
+
+### Periodic checkpoints (recommended weekly)
+
+Every week or so, run the full pipeline to see how results evolve as your
+sample grows:
+
+```bash
+python run_pipeline.py
+```
+
+Keep a note of the p-values and effect sizes over time — this progression is
+worth mentioning in your paper's discussion (e.g., "with n=180 events at the
+4-week mark, results were not significant; with n=450 at 8 weeks...").
+
 ## Results (update this section once you have real data)
 
 _Run `run_pipeline.py` with real accumulated news data, then paste key numbers
