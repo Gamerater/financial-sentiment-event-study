@@ -111,10 +111,27 @@ def get_car_for_event(price_df: pd.DataFrame, event_date: pd.Timestamp,
     return float(np.sum(ars))
 
 
-def aggregate_daily_events(sentiment_df: pd.DataFrame) -> pd.DataFrame:
+def snap_to_next_trading_day(event_date: pd.Timestamp, trading_days: pd.DatetimeIndex) -> pd.Timestamp:
     """
-    Aggregates multiple headlines for the SAME (ticker, calendar day) into a
-    single event with one averaged sentiment score.
+    Given a raw event date (which might fall on a weekend/holiday when
+    markets are closed), returns the actual trading day whose subsequent
+    T+1..T+3 window this event will be evaluated against.
+
+    If event_date IS a trading day, returns it unchanged. Otherwise returns
+    the next trading day after it (e.g. a Saturday news item snaps to the
+    following Monday). Returns pd.NaT if there's no future trading day at
+    all (event is beyond the end of available price data).
+    """
+    if event_date in trading_days:
+        return event_date
+    future = trading_days[trading_days > event_date]
+    return future[0] if len(future) > 0 else pd.NaT
+
+
+def aggregate_daily_events(sentiment_df: pd.DataFrame, prices: dict = None) -> pd.DataFrame:
+    """
+    Aggregates multiple headlines for the SAME (ticker, effective trading day)
+    into a single event with one averaged sentiment score.
 
     WHY THIS MATTERS (important methodological fix): if 20 headlines about
     TSLA all land on the same day, they all get the exact same event window
@@ -126,25 +143,63 @@ def aggregate_daily_events(sentiment_df: pd.DataFrame) -> pd.DataFrame:
     number of independent price-move observations is n=1. This is a form of
     pseudo-replication, a well-known statistical error.
 
-    The fix: group by (ticker, date), and represent each group as ONE event
-    with:
-      - sentiment_score = mean of that day's headline sentiment scores
+    IMPORTANT SUBTLETY (weekend/holiday collapsing): grouping by raw calendar
+    date is not quite enough. A Saturday headline and a Sunday headline (and
+    even a late-Friday-after-close headline) all get evaluated against the
+    SAME following Monday's T+1..T+3 window once get_car_for_event() snaps
+    them forward to the next trading day -- markets were simply closed, so
+    there's only one real price reaction to attribute all of them to. If we
+    group by raw calendar date, "Saturday" and "Sunday" become two separate
+    aggregated events that still end up with an identical CAR later,
+    silently reintroducing the same pseudo-replication problem this function
+    exists to fix. So: if `prices` is provided, we snap each headline's date
+    to its EFFECTIVE trading day first, and group by that instead of the raw
+    calendar date -- ensuring one aggregated event per unique price outcome.
+
+    If `prices` is not provided, falls back to grouping by raw calendar date
+    (weekend-collapsing won't be corrected in that case -- pass `prices` for
+    the fully correct behavior).
+
+    The fix: group by (ticker, effective trading day), and represent each
+    group as ONE event with:
+      - sentiment_score = mean of that group's headline sentiment scores
       - confidence = mean confidence (used only for reporting/filtering context;
         the confidence filter should be applied BEFORE this aggregation so it
         still operates on individual headline confidence)
-      - label = majority label among that day's headlines (ties broken toward
-        'neutral' as the conservative choice)
-      - n_headlines = how many headlines contributed to this day's aggregate
+      - label = majority label among that group's headlines (ties broken
+        toward 'neutral' as the conservative choice)
+      - n_headlines = how many headlines contributed to this event's aggregate
         (kept in the output so you can report/inspect it, and can be used to
         weight or filter events that had very high headline volume, e.g. a
         major earnings day getting extra coverage)
 
     This should be called AFTER filter_by_confidence() and BEFORE CAR is
-    computed, since CAR only needs to be computed once per (ticker, day)
-    rather than once per headline -- also a nice performance win.
+    computed, since CAR only needs to be computed once per (ticker, effective
+    trading day) rather than once per headline -- also a nice performance win.
     """
     df = sentiment_df.copy()
-    df["event_date"] = pd.to_datetime(df["datetime"]).dt.normalize()
+    df["raw_date"] = pd.to_datetime(df["datetime"]).dt.normalize()
+
+    if prices is not None:
+        # Snap each headline's date to its effective trading day, per-ticker,
+        # since different tickers can (rarely) have slightly different trading
+        # calendars (e.g. different exchange holidays).
+        effective_dates = []
+        for _, row in df.iterrows():
+            ticker = row["ticker"]
+            if ticker in prices:
+                trading_days = prices[ticker].index
+                snapped = snap_to_next_trading_day(row["raw_date"], trading_days)
+            else:
+                snapped = row["raw_date"]  # no price data to snap against; fall back to raw date
+            effective_dates.append(snapped)
+        df["event_date"] = effective_dates
+        before_drop = len(df)
+        df = df.dropna(subset=["event_date"])  # drop events with no future trading day at all
+        if len(df) < before_drop:
+            print(f"[event_study] Dropped {before_drop - len(df)} events with no future trading day available")
+    else:
+        df["event_date"] = df["raw_date"]
 
     def majority_label(labels):
         counts = labels.value_counts()
@@ -217,7 +272,7 @@ def build_event_study_dataset(sentiment_df: pd.DataFrame, prices: dict,
         sentiment_df = filter_by_confidence(sentiment_df)
 
     if aggregate_same_day:
-        sentiment_df = aggregate_daily_events(sentiment_df)
+        sentiment_df = aggregate_daily_events(sentiment_df, prices=prices)
     else:
         # Ensure a consistent schema either way -- add n_headlines=1 when
         # aggregation is skipped, so downstream code / CSVs have the same columns.

@@ -1,27 +1,23 @@
 Event Study Statistical Summary
-Events analyzed: 17
+Events analyzed: 10
 
 GROUP T-TEST (positive vs negative):
   error: Not enough events in one or both groups for a t-test (need >=2 each).
 
 CORRELATION (sentiment_score vs CAR):
-  n_events: 17
-  pearson_r: 0.18182553040566207
-  p_value: 0.4849027215442768
+  n_events: 10
+  pearson_r: 0.31580984896107106
+  p_value: 0.3740416580206734
   significant_at_0.05: False
 
 ONE-SAMPLE TESTS (mean CAR vs 0):
   [positive]
     error: Not enough events (need >=2).
   [negative]
-    n: 2
-    mean_CAR: -0.0045979768756924996
-    t_statistic: -0.3268048923038878
-    p_value: 0.798915053489323
-    significant_at_0.05: False
+    error: Not enough events (need >=2).
   [neutral]
-    n: 14
-    mean_CAR: 0.01191458697521876
-    t_statistic: 2.462242084816905
-    p_value: 0.02854834148777534
-    significant_at_0.05: True
+    n: 8
+    mean_CAR: 0.011710346773570676
+    t_statistic: 1.5726573521745884
+    p_value: 0.15979531146056183
+    significant_at_0.05: False
