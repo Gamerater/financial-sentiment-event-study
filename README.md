@@ -50,18 +50,26 @@ Journal of Economic Literature):
 2. **Event window**: trading days T+1 through T+3 (the days *after* the news,
    avoiding same-day ambiguity about whether news broke before or after market
    close).
-3. **Normal return**: estimated using the constant mean return model — each
-   stock's own trailing 60-trading-day average daily return, computed *before*
-   the event.
-4. **Abnormal Return (AR)**: `AR_t = Actual_Return_t - Normal_Return`
+3. **Confidence filtering**: events where FinBERT's prediction confidence is
+   below 0.6 are excluded before analysis, since a low-confidence label (e.g.
+   51% "positive") is closer to a coin flip than a real signal and would only
+   add noise to the sentiment groups.
+4. **Market-adjusted Abnormal Return (AR)**: `AR_t = Stock_Return_t - SPY_Return_t`
+   (SPY, the S&P 500 ETF, as the market proxy). This isolates stock-specific
+   movement from broad market-wide moves -- e.g. if the whole market drops 2%
+   on unrelated macro news, that shouldn't be attributed to our ticker's own
+   news event. This is the standard "market-adjusted return model" in event
+   study literature, a middle ground between a naive same-stock baseline and
+   a full CAPM/market-model regression with estimated beta.
 5. **Cumulative Abnormal Return (CAR)**: sum of AR over the event window.
 6. **Hypothesis testing**: Welch's t-test comparing mean CAR between positive-
    and negative-sentiment event groups, plus Pearson correlation between
    continuous sentiment score and CAR.
 
-We use the constant mean return model rather than a market/CAPM-beta model for
-simplicity and tractability on a zero-budget student timeline; this is
-explicitly noted as a simplification/limitation (see Limitations below).
+We use market-adjusted returns (assuming beta = 1) rather than a full CAPM
+model with estimated beta, for simplicity and tractability on a zero-budget
+student timeline; this is explicitly noted as a simplification/limitation
+(see Limitations below).
 
 ## Data Sources (all free, zero budget)
 
@@ -175,8 +183,10 @@ and figures here before submission._
 
 - News sample size is bounded by free-tier data availability; results should
   be interpreted with appropriate statistical caution regarding sample size.
-- The constant mean return model is a simplification vs. a full market/CAPM
-  model; it does not control for broad market-wide moves on the event day.
+- The market-adjusted return model (beta assumed = 1) is a simplification vs.
+  a full CAPM model with estimated per-stock beta; it corrects for broad
+  market-wide moves but not for each stock's individual sensitivity to the
+  market.
 - Headline-level sentiment (not full article body) is used, which may miss
   nuance in longer-form financial reporting.
 - Correlation, not causation: this study establishes statistical association,

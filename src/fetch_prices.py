@@ -19,6 +19,7 @@ import yfinance as yf
 
 # ---- CONFIG ----
 TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"]
+BENCHMARK_TICKER = "SPY"     # S&P 500 ETF, used as the market proxy for market-adjusted returns
 PERIOD = "2y"          # how far back to pull daily prices
 INTERVAL = "1d"        # daily bars (enough resolution for a short-term event study)
 RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
@@ -59,17 +60,27 @@ def compute_daily_returns(price_df: pd.DataFrame) -> pd.DataFrame:
     return price_df
 
 
-def fetch_and_cache_all(tickers=TICKERS, force_refresh: bool = False) -> dict:
+def fetch_and_cache_all(tickers=TICKERS, force_refresh: bool = False, include_benchmark: bool = True) -> dict:
     """
     Fetches price history for every ticker in `tickers`, computes returns,
     and saves each to data/raw/prices_<TICKER>.csv
+
+    If include_benchmark=True (default), also fetches BENCHMARK_TICKER (SPY)
+    the same way -- this is needed for market-adjusted abnormal returns in
+    event_study.py. It's fetched through the exact same caching/timeout logic
+    as any other ticker, just always included regardless of what's passed in
+    `tickers`, so callers don't need to remember to add it themselves.
 
     Returns a dict {ticker: DataFrame} for immediate use in this session too.
     """
     os.makedirs(RAW_DIR, exist_ok=True)
     all_data = {}
 
-    for ticker in tickers:
+    fetch_list = list(tickers)
+    if include_benchmark and BENCHMARK_TICKER not in fetch_list:
+        fetch_list.append(BENCHMARK_TICKER)
+
+    for ticker in fetch_list:
         out_path = os.path.join(RAW_DIR, f"prices_{ticker}.csv")
 
         if os.path.exists(out_path) and not force_refresh:
