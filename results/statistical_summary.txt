@@ -1,39 +1,27 @@
 Event Study Statistical Summary
-Events analyzed: 180
+Events analyzed: 17
 
 GROUP T-TEST (positive vs negative):
-  n_positive: 24
-  n_negative: 47
-  mean_CAR_positive: -0.007703358201040887
-  mean_CAR_negative: -0.001660811841392017
-  std_CAR_positive: 0.014750228717704863
-  std_CAR_negative: 0.018336959406989994
-  t_statistic: -1.500379299673215
-  p_value: 0.1391192520595197
-  significant_at_0.05: False
+  error: Not enough events in one or both groups for a t-test (need >=2 each).
 
 CORRELATION (sentiment_score vs CAR):
-  n_events: 180
-  pearson_r: -0.08537294265353981
-  p_value: 0.25449456821984406
+  n_events: 17
+  pearson_r: 0.18182553040566207
+  p_value: 0.4849027215442768
   significant_at_0.05: False
 
 ONE-SAMPLE TESTS (mean CAR vs 0):
   [positive]
-    n: 24
-    mean_CAR: -0.007703358201040887
-    t_statistic: -2.558509059020258
-    p_value: 0.017563291761224106
-    significant_at_0.05: True
+    error: Not enough events (need >=2).
   [negative]
-    n: 47
-    mean_CAR: -0.001660811841392017
-    t_statistic: -0.620929134876059
-    p_value: 0.5377109948764438
+    n: 2
+    mean_CAR: -0.0045979768756924996
+    t_statistic: -0.3268048923038878
+    p_value: 0.798915053489323
     significant_at_0.05: False
   [neutral]
-    n: 109
-    mean_CAR: -0.0017385487018432087
-    t_statistic: -0.9267895781619834
-    p_value: 0.3561022791727795
-    significant_at_0.05: False
+    n: 14
+    mean_CAR: 0.01191458697521876
+    t_statistic: 2.462242084816905
+    p_value: 0.02854834148777534
+    significant_at_0.05: True

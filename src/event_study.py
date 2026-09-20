@@ -111,6 +111,67 @@ def get_car_for_event(price_df: pd.DataFrame, event_date: pd.Timestamp,
     return float(np.sum(ars))
 
 
+def aggregate_daily_events(sentiment_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregates multiple headlines for the SAME (ticker, calendar day) into a
+    single event with one averaged sentiment score.
+
+    WHY THIS MATTERS (important methodological fix): if 20 headlines about
+    TSLA all land on the same day, they all get the exact same event window
+    and therefore the exact same CAR (the stock only moves once that day
+    regardless of how many articles were written about it). Treating those
+    20 headlines as 20 independent statistical observations massively
+    understates uncertainty and inflates the apparent sample size -- the
+    t-tests and correlation would be computed as if n=20 when the TRUE
+    number of independent price-move observations is n=1. This is a form of
+    pseudo-replication, a well-known statistical error.
+
+    The fix: group by (ticker, date), and represent each group as ONE event
+    with:
+      - sentiment_score = mean of that day's headline sentiment scores
+      - confidence = mean confidence (used only for reporting/filtering context;
+        the confidence filter should be applied BEFORE this aggregation so it
+        still operates on individual headline confidence)
+      - label = majority label among that day's headlines (ties broken toward
+        'neutral' as the conservative choice)
+      - n_headlines = how many headlines contributed to this day's aggregate
+        (kept in the output so you can report/inspect it, and can be used to
+        weight or filter events that had very high headline volume, e.g. a
+        major earnings day getting extra coverage)
+
+    This should be called AFTER filter_by_confidence() and BEFORE CAR is
+    computed, since CAR only needs to be computed once per (ticker, day)
+    rather than once per headline -- also a nice performance win.
+    """
+    df = sentiment_df.copy()
+    df["event_date"] = pd.to_datetime(df["datetime"]).dt.normalize()
+
+    def majority_label(labels):
+        counts = labels.value_counts()
+        top_count = counts.iloc[0]
+        # If there's a tie for the top count, prefer 'neutral' as the
+        # conservative choice rather than arbitrarily picking positive/negative
+        top_labels = counts[counts == top_count].index.tolist()
+        if len(top_labels) > 1 and "neutral" in top_labels:
+            return "neutral"
+        return top_labels[0]
+
+    aggregated = df.groupby(["ticker", "event_date"]).agg(
+        sentiment_score=("sentiment_score", "mean"),
+        confidence=("confidence", "mean"),
+        label=("label", majority_label),
+        n_headlines=("title", "count"),
+        titles=("title", lambda x: " | ".join(x.head(3)) + (" | ..." if len(x) > 3 else "")),
+    ).reset_index()
+
+    aggregated = aggregated.rename(columns={"event_date": "datetime", "titles": "title"})
+
+    print(f"[event_study] Aggregated {len(df)} headlines into {len(aggregated)} unique "
+          f"(ticker, day) events ({len(df) - len(aggregated)} headlines merged into existing days)")
+
+    return aggregated
+
+
 def filter_by_confidence(sentiment_df: pd.DataFrame,
                           min_confidence: float = MIN_SENTIMENT_CONFIDENCE) -> pd.DataFrame:
     """
@@ -133,19 +194,35 @@ def filter_by_confidence(sentiment_df: pd.DataFrame,
 
 def build_event_study_dataset(sentiment_df: pd.DataFrame, prices: dict,
                                 apply_confidence_filter: bool = True,
-                                use_market_adjustment: bool = True) -> pd.DataFrame:
+                                use_market_adjustment: bool = True,
+                                aggregate_same_day: bool = True) -> pd.DataFrame:
     """
     Main pipeline function: takes the sentiment-scored news DataFrame and a
     dict of {ticker: price_df} (which should include BENCHMARK_TICKER's
     price data if use_market_adjustment=True), and computes CAR for every
     news event.
 
-    Returns a DataFrame with one row per news event, including:
-        ticker, datetime, title, label, sentiment_score, CAR
+    If aggregate_same_day=True (recommended, default), multiple headlines
+    for the same ticker on the same day are collapsed into one event with
+    an averaged sentiment score BEFORE computing CAR -- see
+    aggregate_daily_events() for why this matters. This gives you the
+    statistically honest sample size (unique price-move events) instead of
+    the inflated headline count.
+
+    Returns a DataFrame with one row per (ticker, day) event, including:
+        ticker, datetime, title, label, sentiment_score, CAR, n_headlines
     Rows where CAR couldn't be computed (insufficient data) are dropped.
     """
     if apply_confidence_filter:
         sentiment_df = filter_by_confidence(sentiment_df)
+
+    if aggregate_same_day:
+        sentiment_df = aggregate_daily_events(sentiment_df)
+    else:
+        # Ensure a consistent schema either way -- add n_headlines=1 when
+        # aggregation is skipped, so downstream code / CSVs have the same columns.
+        sentiment_df = sentiment_df.copy()
+        sentiment_df["n_headlines"] = 1
 
     benchmark_df = None
     if use_market_adjustment:
@@ -176,6 +253,7 @@ def build_event_study_dataset(sentiment_df: pd.DataFrame, prices: dict,
                 "label": row["label"],
                 "sentiment_score": row["sentiment_score"],
                 "confidence": row["confidence"],
+                "n_headlines": row["n_headlines"],
                 "CAR": car,
                 "market_adjusted": benchmark_df is not None,
             })

@@ -54,15 +54,25 @@ Journal of Economic Literature):
    below 0.6 are excluded before analysis, since a low-confidence label (e.g.
    51% "positive") is closer to a coin flip than a real signal and would only
    add noise to the sentiment groups.
-4. **Market-adjusted Abnormal Return (AR)**: `AR_t = Stock_Return_t - SPY_Return_t`
+4. **Same-day aggregation** (important): multiple headlines about the same
+   ticker on the same calendar day are collapsed into ONE event with an
+   averaged sentiment score, rather than counted as separate independent
+   observations. This matters a lot in practice -- a single major news day
+   (e.g. an earnings report) can generate 10-20 headlines that all share the
+   exact same subsequent price move, since the stock only moves once
+   regardless of article count. Treating each headline as independent would
+   be a form of pseudo-replication: it inflates the apparent sample size and
+   understates the true uncertainty in any statistical test. Aggregating to
+   one event per (ticker, day) gives the statistically honest sample size.
+5. **Market-adjusted Abnormal Return (AR)**: `AR_t = Stock_Return_t - SPY_Return_t`
    (SPY, the S&P 500 ETF, as the market proxy). This isolates stock-specific
    movement from broad market-wide moves -- e.g. if the whole market drops 2%
    on unrelated macro news, that shouldn't be attributed to our ticker's own
    news event. This is the standard "market-adjusted return model" in event
    study literature, a middle ground between a naive same-stock baseline and
    a full CAPM/market-model regression with estimated beta.
-5. **Cumulative Abnormal Return (CAR)**: sum of AR over the event window.
-6. **Hypothesis testing**: Welch's t-test comparing mean CAR between positive-
+6. **Cumulative Abnormal Return (CAR)**: sum of AR over the event window.
+7. **Hypothesis testing**: Welch's t-test comparing mean CAR between positive-
    and negative-sentiment event groups, plus Pearson correlation between
    continuous sentiment score and CAR.
 
@@ -187,6 +197,11 @@ and figures here before submission._
   a full CAPM model with estimated per-stock beta; it corrects for broad
   market-wide moves but not for each stock's individual sensitivity to the
   market.
+- Same-day aggregation reduces headline count to unique price-move events,
+  which is the statistically correct approach but does mean the "sample
+  size" that matters for statistical power is the number of unique
+  (ticker, day) events, not the number of headlines collected -- worth
+  tracking both numbers and reporting the aggregated count as your true N.
 - Headline-level sentiment (not full article body) is used, which may miss
   nuance in longer-form financial reporting.
 - Correlation, not causation: this study establishes statistical association,

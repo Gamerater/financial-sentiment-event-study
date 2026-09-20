@@ -112,8 +112,24 @@ def score_news_archive():
 
     sentiment_df = score_headlines(news_df["title"].tolist())
 
-    # Merge back on title (titles are unique per our earlier de-dup step)
-    merged = news_df.merge(sentiment_df, on="title", how="left")
+    # IMPORTANT: merge by POSITION (reset_index + concat), not by joining on the
+    # `title` column. news_df is de-duplicated per-ticker (see fetch_news.py's
+    # drop_duplicates(subset=["ticker","title"])), so the SAME headline text can
+    # legitimately appear more than once across different tickers (e.g. a wire
+    # headline like "Fed holds rates steady" tagged under both AAPL and MSFT).
+    # Merging on title alone would then match one news_df row to multiple
+    # sentiment_df rows (or vice versa), silently duplicating events and
+    # inflating the dataset. score_headlines() preserves row order and produces
+    # exactly one output row per input row, so a position-based concat is safe
+    # and avoids this entirely.
+    news_df = news_df.reset_index(drop=True)
+    sentiment_df = sentiment_df.reset_index(drop=True)
+    assert len(news_df) == len(sentiment_df), (
+        f"Row count mismatch after scoring: {len(news_df)} headlines in, "
+        f"{len(sentiment_df)} sentiment rows out. This should never happen -- "
+        f"check score_headlines() for a bug if it does."
+    )
+    merged = pd.concat([news_df, sentiment_df.drop(columns=["title"])], axis=1)
     merged.to_csv(SENTIMENT_OUTPUT_PATH, index=False)
     print(f"[sentiment] Saved {len(merged)} scored headlines -> {SENTIMENT_OUTPUT_PATH}")
 
