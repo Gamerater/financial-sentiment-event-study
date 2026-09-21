@@ -30,7 +30,8 @@ import requests
 from bs4 import BeautifulSoup
 import yfinance as yf
 
-TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"]
+TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA",
+           "NFLX", "AMD", "INTC", "ORCL", "CRM", "ADBE"]
 RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
 NEWS_ARCHIVE_PATH = os.path.join(RAW_DIR, "news_archive.csv")
 

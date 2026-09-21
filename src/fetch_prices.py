@@ -18,7 +18,8 @@ import pandas as pd
 import yfinance as yf
 
 # ---- CONFIG ----
-TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"]
+TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA",
+           "NFLX", "AMD", "INTC", "ORCL", "CRM", "ADBE"]
 BENCHMARK_TICKER = "SPY"     # S&P 500 ETF, used as the market proxy for market-adjusted returns
 PERIOD = "2y"          # how far back to pull daily prices
 INTERVAL = "1d"        # daily bars (enough resolution for a short-term event study)

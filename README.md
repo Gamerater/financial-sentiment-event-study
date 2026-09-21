@@ -137,6 +137,20 @@ statistical pipeline correctly detects a real signal when one exists. **Any
 results from this synthetic data must be clearly labeled as such** and are for
 pipeline demonstration only — not to be presented as the paper's actual findings.
 
+## Dashboard
+
+A local, read-only results viewer for demos. It reads whatever `run_pipeline.py`
+has already produced -- it does not fetch data or run the model itself, so
+it's fast and has no network dependency during a live demo.
+
+```bash
+python run_pipeline.py    # run this first (or whenever you want fresh results)
+python dashboard.py       # opens http://127.0.0.1:5000 in your browser
+```
+
+Click "Reload results" in the browser any time after re-running the pipeline
+to pick up new numbers without restarting the dashboard.
+
 ## Automating Daily Data Collection (recommended if you have weeks before your deadline)
 
 Since news sample size determines statistical power, the single most valuable
