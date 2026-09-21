@@ -5,17 +5,17 @@ GROUP T-TEST (positive vs negative):
   n_positive: 3
   n_negative: 13
   mean_CAR_positive: -0.025703722390990596
-  mean_CAR_negative: 0.012765581835857067
+  mean_CAR_negative: 0.012765581835857073
   std_CAR_positive: 0.03367145806435703
-  std_CAR_negative: 0.06361578102998178
-  t_statistic: -1.465321808126443
-  p_value: 0.193375473568566
+  std_CAR_negative: 0.06361578102998174
+  t_statistic: -1.4653218081264436
+  p_value: 0.19337547356856583
   significant_at_0.05: False
 
 CORRELATION (sentiment_score vs CAR):
   n_events: 59
-  pearson_r: -0.18904092611513054
-  p_value: 0.15158703842398608
+  pearson_r: -0.1890409261151308
+  p_value: 0.15158703842398516
   significant_at_0.05: False
 
 ONE-SAMPLE TESTS (mean CAR vs 0):
@@ -27,13 +27,13 @@ ONE-SAMPLE TESTS (mean CAR vs 0):
     significant_at_0.05: False
   [negative]
     n: 13
-    mean_CAR: 0.012765581835857067
-    t_statistic: 0.7235148122856832
-    p_value: 0.4832294266742976
+    mean_CAR: 0.012765581835857073
+    t_statistic: 0.7235148122856837
+    p_value: 0.48322942667429725
     significant_at_0.05: False
   [neutral]
     n: 43
-    mean_CAR: -0.001071631604889891
-    t_statistic: -0.15332100353039052
-    p_value: 0.8788794241616735
+    mean_CAR: -0.0010716316048898738
+    t_statistic: -0.1533210035303881
+    p_value: 0.8788794241616753
     significant_at_0.05: False

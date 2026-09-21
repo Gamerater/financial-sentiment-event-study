@@ -19,6 +19,7 @@ import os
 import sys
 import webbrowser
 import threading
+import datetime as dt
 
 from flask import Flask, jsonify, render_template, send_from_directory
 import pandas as pd
@@ -161,6 +162,57 @@ def compute_per_ticker_stats(dataset_path):
     return result
 
 
+def compute_freshness(dataset_path, news_archive_path, fetch_log_path):
+    """
+    Computes the "data freshness" facts the dashboard shows to reinforce that
+    this is a live, ongoing study rather than a one-off snapshot:
+      - last_pipeline_run: when event_study_dataset.csv was last written
+        (i.e. when run_pipeline.py / stats_tests.py last completed)
+      - last_fetch: when the news archive was last updated (may be more
+        recent than the last full pipeline run, since daily_fetch.py can run
+        independently of run_pipeline.py)
+      - days_collecting: whole days between the EARLIEST logged fetch and now,
+        read from fetch_log.txt if it exists (falls back to the news
+        archive's own earliest headline date if the log is missing)
+      - total_fetch_runs: how many times daily_fetch.py / fetch_news.py has
+        successfully run, counted from fetch_log.txt
+
+    Every field is None (not an error) when its source file doesn't exist
+    yet, so a brand-new project just shows sparser info instead of failing.
+    """
+    result = {
+        "last_pipeline_run": None,
+        "last_fetch": None,
+        "days_collecting": None,
+        "total_fetch_runs": None,
+    }
+
+    if os.path.exists(dataset_path):
+        mtime = os.path.getmtime(dataset_path)
+        result["last_pipeline_run"] = dt.datetime.fromtimestamp(mtime).isoformat(timespec="seconds")
+
+    if os.path.exists(news_archive_path):
+        mtime = os.path.getmtime(news_archive_path)
+        result["last_fetch"] = dt.datetime.fromtimestamp(mtime).isoformat(timespec="seconds")
+
+    if os.path.exists(fetch_log_path):
+        try:
+            with open(fetch_log_path, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            if lines:
+                # Each line starts "YYYY-MM-DD HH:MM:SS | ..." -- parse the
+                # timestamp off the first line (earliest run) to compute how
+                # many days of collection have elapsed.
+                first_ts_str = lines[0].split("|")[0].strip()
+                first_ts = dt.datetime.strptime(first_ts_str, "%Y-%m-%d %H:%M:%S")
+                result["days_collecting"] = max(0, (dt.datetime.now() - first_ts).days)
+                result["total_fetch_runs"] = sum(1 for line in lines if "success=True" in line)
+        except Exception:
+            pass  # malformed log line shouldn't break the whole endpoint
+
+    return result
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -170,15 +222,18 @@ def index():
 def api_results():
     """
     Returns everything the dashboard needs in one JSON payload: the parsed
-    statistics summary, the event table, per-ticker breakdowns, and which
-    figure files exist.
+    statistics summary, the event table, per-ticker breakdowns, freshness
+    info, and which figure files exist.
     """
     summary_path = os.path.join(RESULTS_DIR, "statistical_summary.txt")
     dataset_path = os.path.join(DATA_PROCESSED, "event_study_dataset.csv")
+    news_archive_path = os.path.join(BASE_DIR, "data", "raw", "news_archive.csv")
+    fetch_log_path = os.path.join(BASE_DIR, "data", "raw", "fetch_log.txt")
 
     summary = parse_statistical_summary(summary_path)
     events = load_event_dataset(dataset_path)
     per_ticker = compute_per_ticker_stats(dataset_path)
+    freshness = compute_freshness(dataset_path, news_archive_path, fetch_log_path)
 
     figure_files = ["car_boxplot.png", "sentiment_vs_car_scatter.png", "car_timeline.png", "label_distribution.png"]
     available_figures = [f for f in figure_files if os.path.exists(os.path.join(FIGURES_DIR, f))]
@@ -190,12 +245,38 @@ def api_results():
         "figures": available_figures,
         "has_data": summary is not None,
         "per_ticker": per_ticker,
+        "freshness": freshness,
     })
 
 
 @app.route("/figures/<path:filename>")
 def serve_figure(filename):
     return send_from_directory(FIGURES_DIR, filename)
+
+
+@app.route("/api/history")
+def api_history():
+    """
+    Returns the run-by-run history logged by stats_tests.py's
+    log_run_history(), so the dashboard can plot how sample size and
+    statistical results have trended over the data-collection period.
+    Returns an empty list (not an error) if no history exists yet -- this
+    is expected on a fresh project before the pipeline has run more than once.
+    """
+    history_path = os.path.join(RESULTS_DIR, "run_history.csv")
+    if not os.path.exists(history_path):
+        return jsonify({"runs": []})
+
+    df = pd.read_csv(history_path)
+    records = df.to_dict(orient="records")
+    # Replace NaN (e.g. ttest_p_value when the t-test couldn't run that day)
+    # with None so it serializes as valid JSON null rather than the invalid
+    # bare "NaN" token that jsonify would otherwise produce from a numpy NaN.
+    for record in records:
+        for key, value in record.items():
+            if isinstance(value, float) and pd.isna(value):
+                record[key] = None
+    return jsonify({"runs": records})
 
 
 def open_browser():

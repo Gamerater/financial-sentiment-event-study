@@ -27,12 +27,14 @@ Usage:
 """
 
 import os
+import datetime as dt
 import pandas as pd
 import numpy as np
 from scipy import stats
 
 PROCESSED_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
+RUN_HISTORY_PATH = os.path.join(RESULTS_DIR, "run_history.csv")
 
 
 def run_group_ttest(df: pd.DataFrame) -> dict:
@@ -103,6 +105,53 @@ def run_one_sample_tests(df: pd.DataFrame) -> dict:
     return results
 
 
+def log_run_history(df, ttest_result, corr_result):
+    """
+    Appends one row to results/run_history.csv every time the full analysis
+    runs, so the dashboard can plot how sample size and statistical results
+    have evolved over the course of the data-collection period.
+
+    This is intentionally append-only (never overwritten), so it becomes a
+    genuine research log: every pipeline run adds one data point, giving you
+    a real trend line by the time you write up results -- e.g. "the
+    correlation coefficient stabilized once n exceeded 200 events" is a
+    claim you can only make if this history was captured along the way.
+
+    Columns logged:
+      run_timestamp   - when this run happened (ISO format)
+      n_events        - total events analyzed this run
+      n_positive      - positive-sentiment event count
+      n_negative      - negative-sentiment event count
+      n_neutral       - neutral-sentiment event count
+      pearson_r       - correlation coefficient (sentiment vs CAR), all events
+      corr_p_value    - p-value for that correlation
+      ttest_p_value   - p-value for positive-vs-negative group t-test (None if
+                        the t-test couldn't run due to insufficient group size)
+    """
+    label_counts = df["label"].value_counts()
+
+    row = {
+        "run_timestamp": dt.datetime.now().isoformat(timespec="seconds"),
+        "n_events": len(df),
+        "n_positive": int(label_counts.get("positive", 0)),
+        "n_negative": int(label_counts.get("negative", 0)),
+        "n_neutral": int(label_counts.get("neutral", 0)),
+        "pearson_r": corr_result.get("pearson_r"),
+        "corr_p_value": corr_result.get("p_value"),
+        "ttest_p_value": ttest_result.get("p_value"),  # None if t-test had an "error" key instead
+    }
+
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    row_df = pd.DataFrame([row])
+
+    if os.path.exists(RUN_HISTORY_PATH):
+        row_df.to_csv(RUN_HISTORY_PATH, mode="a", header=False, index=False)
+    else:
+        row_df.to_csv(RUN_HISTORY_PATH, mode="w", header=True, index=False)
+
+    print(f"[history] Logged this run to {RUN_HISTORY_PATH}")
+
+
 def run_full_analysis(dataset_path: str = None) -> dict:
     """
     Runs all three analyses on the event study dataset and prints a
@@ -163,6 +212,8 @@ def run_full_analysis(dataset_path: str = None) -> dict:
             for k, v in res.items():
                 f.write(f"    {k}: {v}\n")
     print(f"\n[saved] Summary written to {summary_path}")
+
+    log_run_history(df, ttest_result, corr_result)
 
     return {
         "group_ttest": ttest_result,
