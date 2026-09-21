@@ -118,6 +118,49 @@ def load_event_dataset(path):
     return df.to_dict(orient="records")
 
 
+def compute_per_ticker_stats(dataset_path):
+    """
+    Computes lightweight summary stats PER TICKER directly from the raw
+    event_study_dataset.csv, independent of the aggregate statistical_summary.txt
+    (which only covers the all-tickers-combined tests). This lets the dashboard
+    show a per-stock view without needing stats_tests.py to be re-run with a
+    ticker filter -- we just group the already-computed CAR values here.
+
+    Returns a dict {ticker: {n_events, mean_CAR, std_CAR, correlation, p_value}}.
+    Correlation/p_value are omitted (None) when a ticker has fewer than 4 events,
+    since a Pearson correlation on 3 or fewer points is not meaningful.
+    """
+    if not os.path.exists(dataset_path):
+        return {}
+
+    df = pd.read_csv(dataset_path, parse_dates=["datetime"])
+    if df.empty:
+        return {}
+
+    from scipy import stats as scipy_stats
+
+    result = {}
+    for ticker, group in df.groupby("ticker"):
+        entry = {
+            "n_events": int(len(group)),
+            "mean_CAR": round(float(group["CAR"].mean()), 4),
+            "std_CAR": round(float(group["CAR"].std()), 4) if len(group) > 1 else None,
+            "date_range": [
+                group["datetime"].min().strftime("%Y-%m-%d"),
+                group["datetime"].max().strftime("%Y-%m-%d"),
+            ],
+            "correlation": None,
+            "p_value": None,
+        }
+        if len(group) >= 4:
+            r, p = scipy_stats.pearsonr(group["sentiment_score"], group["CAR"])
+            entry["correlation"] = round(float(r), 3)
+            entry["p_value"] = round(float(p), 4)
+        result[ticker] = entry
+
+    return result
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -127,13 +170,15 @@ def index():
 def api_results():
     """
     Returns everything the dashboard needs in one JSON payload: the parsed
-    statistics summary, the event table, and which figure files exist.
+    statistics summary, the event table, per-ticker breakdowns, and which
+    figure files exist.
     """
     summary_path = os.path.join(RESULTS_DIR, "statistical_summary.txt")
     dataset_path = os.path.join(DATA_PROCESSED, "event_study_dataset.csv")
 
     summary = parse_statistical_summary(summary_path)
     events = load_event_dataset(dataset_path)
+    per_ticker = compute_per_ticker_stats(dataset_path)
 
     figure_files = ["car_boxplot.png", "sentiment_vs_car_scatter.png", "car_timeline.png", "label_distribution.png"]
     available_figures = [f for f in figure_files if os.path.exists(os.path.join(FIGURES_DIR, f))]
@@ -144,6 +189,7 @@ def api_results():
         "n_events": len(events),
         "figures": available_figures,
         "has_data": summary is not None,
+        "per_ticker": per_ticker,
     })
 
 

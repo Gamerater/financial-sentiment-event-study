@@ -32,7 +32,7 @@
   }
 
   .wrap {
-    max-width: 980px;
+    max-width: 1040px;
     margin: 0 auto;
     padding: 56px 32px 96px;
   }
@@ -40,7 +40,7 @@
   header {
     border-bottom: 2px solid var(--ink);
     padding-bottom: 24px;
-    margin-bottom: 40px;
+    margin-bottom: 28px;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
@@ -76,6 +76,38 @@
   }
   #reload-btn:hover { background: var(--ink-soft); }
   #reload-btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* Tab navigation */
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+
+  .tab {
+    font-family: 'Inter', sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--grey);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 14px;
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--gold);
+  }
+  .tab .tab-count {
+    color: var(--grey);
+    font-size: 11.5px;
+    margin-left: 4px;
+  }
 
   .stat-strip {
     display: grid;
@@ -208,6 +240,7 @@
   }
 
   tbody tr:hover { background: var(--paper-raised); }
+  tbody tr.clickable { cursor: pointer; }
 
   .badge {
     display: inline-block;
@@ -219,6 +252,14 @@
   .badge.positive { background: #E6EEE9; color: var(--positive); }
   .badge.negative { background: #F3E5E5; color: var(--negative); }
   .badge.neutral { background: #EDEBE5; color: var(--grey); }
+
+  .ticker-link {
+    color: var(--ink);
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px dotted var(--grey);
+  }
+  .ticker-link:hover { color: var(--gold); border-bottom-color: var(--gold); }
 
   .car-pos { color: var(--positive); font-weight: 600; }
   .car-neg { color: var(--negative); font-weight: 600; }
@@ -239,6 +280,40 @@
     color: var(--ink);
     font-size: 18px;
     margin-bottom: 8px;
+  }
+
+  /* Per-ticker overview grid (shown on the "All stocks" tab) */
+  .ticker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+  }
+  .ticker-card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    padding: 16px;
+    cursor: pointer;
+  }
+  .ticker-card:hover { border-color: var(--gold); }
+  .ticker-card .tk-symbol {
+    font-family: 'Source Serif 4', serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .ticker-card .tk-n {
+    font-size: 12px;
+    color: var(--grey);
+    margin-bottom: 10px;
+  }
+  .ticker-card .tk-car {
+    font-size: 20px;
+    font-weight: 600;
+    font-family: 'Source Serif 4', serif;
+  }
+  .ticker-card .tk-car-label {
+    font-size: 11px;
+    color: var(--grey);
   }
 
   footer {
@@ -262,10 +337,12 @@
   <header>
     <div>
       <h1>Correlating Financial News Sentiment with Short-Term Stock Price Movement</h1>
-      <p class="subtitle">An event-study approach · AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA</p>
+      <p class="subtitle">An event-study approach · tech sector</p>
     </div>
     <button id="reload-btn" onclick="loadResults()">Reload results</button>
   </header>
+
+  <div id="tabs" class="tabs" style="display:none;"></div>
 
   <div id="content">
     <div class="empty-state"><h3>Loading…</h3></div>
@@ -278,6 +355,9 @@
 </div>
 
 <script>
+let LAST_DATA = null;
+let ACTIVE_TAB = 'all';
+
 function fmtPct(v) {
   const n = parseFloat(v);
   if (isNaN(n)) return v;
@@ -285,7 +365,7 @@ function fmtPct(v) {
 }
 function fmtNum(v, digits=3) {
   const n = parseFloat(v);
-  if (isNaN(n)) return v;
+  if (n === null || v === null || isNaN(n)) return '—';
   return n.toFixed(digits);
 }
 function sigClass(v) {
@@ -317,6 +397,28 @@ function renderTestCard(title, data) {
   return `<div class="test-card"><h3>${title}</h3>${rows}</div>`;
 }
 
+function switchTab(tab) {
+  ACTIVE_TAB = tab;
+  renderTabs();
+  renderContent();
+}
+
+function renderTabs() {
+  const tabsEl = document.getElementById('tabs');
+  if (!LAST_DATA || !LAST_DATA.has_data) {
+    tabsEl.style.display = 'none';
+    return;
+  }
+  const tickers = Object.keys(LAST_DATA.per_ticker || {}).sort();
+  let html = `<button class="tab ${ACTIVE_TAB === 'all' ? 'active' : ''}" onclick="switchTab('all')">All stocks</button>`;
+  for (const t of tickers) {
+    const n = LAST_DATA.per_ticker[t].n_events;
+    html += `<button class="tab ${ACTIVE_TAB === t ? 'active' : ''}" onclick="switchTab('${t}')">${t}<span class="tab-count">${n}</span></button>`;
+  }
+  tabsEl.innerHTML = html;
+  tabsEl.style.display = 'flex';
+}
+
 async function loadResults() {
   const btn = document.getElementById('reload-btn');
   btn.disabled = true;
@@ -325,7 +427,9 @@ async function loadResults() {
   try {
     const res = await fetch('/api/results');
     const data = await res.json();
-    render(data);
+    LAST_DATA = data;
+    renderTabs();
+    renderContent();
   } catch (e) {
     document.getElementById('content').innerHTML = `<div class="empty-state"><h3>Could not load results</h3><p>${e}</p></div>`;
   } finally {
@@ -334,10 +438,11 @@ async function loadResults() {
   }
 }
 
-function render(data) {
+function renderContent() {
+  const data = LAST_DATA;
   const content = document.getElementById('content');
 
-  if (!data.has_data) {
+  if (!data || !data.has_data) {
     content.innerHTML = `
       <div class="empty-state">
         <h3>No results yet</h3>
@@ -346,6 +451,15 @@ function render(data) {
     return;
   }
 
+  if (ACTIVE_TAB === 'all') {
+    renderAllStocksView(data);
+  } else {
+    renderTickerView(data, ACTIVE_TAB);
+  }
+}
+
+function renderAllStocksView(data) {
+  const content = document.getElementById('content');
   const corr = data.summary.correlation || {};
   const nEvents = data.summary.events_analyzed || data.n_events;
   const dates = data.events.map(e => e.datetime).sort();
@@ -353,7 +467,6 @@ function render(data) {
 
   let html = '';
 
-  // Stat strip
   html += `<div class="stat-strip">
     <div class="stat">
       <div class="label">Events analyzed</div>
@@ -377,9 +490,27 @@ function render(data) {
     </div>
   </div>`;
 
-  // Statistical tests
+  // Per-ticker overview cards
+  const tickers = Object.keys(data.per_ticker || {}).sort();
+  if (tickers.length > 0) {
+    html += `<section>
+      <h2>By Ticker <span class="count">(click a stock for detail)</span></h2>
+      <div class="ticker-grid">`;
+    for (const t of tickers) {
+      const s = data.per_ticker[t];
+      const carClass = s.mean_CAR >= 0 ? 'car-pos' : 'car-neg';
+      html += `<div class="ticker-card" onclick="switchTab('${t}')">
+        <div class="tk-symbol">${t}</div>
+        <div class="tk-n">${s.n_events} event${s.n_events === 1 ? '' : 's'}</div>
+        <div class="tk-car ${carClass}">${fmtPct(s.mean_CAR)}</div>
+        <div class="tk-car-label">mean CAR</div>
+      </div>`;
+    }
+    html += `</div></section>`;
+  }
+
   html += `<section>
-    <h2>Statistical Tests</h2>
+    <h2>Statistical Tests <span class="count">(all tickers combined)</span></h2>
     <div class="test-grid">
       ${renderTestCard('Group comparison — positive vs negative sentiment', data.summary.group_ttest)}
       ${renderTestCard('Correlation — sentiment score vs CAR', data.summary.correlation)}
@@ -388,7 +519,6 @@ function render(data) {
     </div>
   </section>`;
 
-  // Charts
   if (data.figures.length > 0) {
     html += `<section>
       <h2>Figures</h2>
@@ -398,36 +528,84 @@ function render(data) {
     </section>`;
   }
 
-  // Events table
-  html += `<section>
-    <h2>Event Dataset <span class="count">(${data.events.length} shown, most recent first)</span></h2>`;
-
-  if (data.events.length === 0) {
-    html += `<div class="empty-state"><h3>No usable events yet</h3><p>Events need enough subsequent trading days of price data before they can be included.</p></div>`;
-  } else {
-    html += `<table>
-      <thead><tr>
-        <th>Date</th><th>Ticker</th><th>Sentiment</th><th>Score</th><th>Confidence</th><th>Headlines</th><th>CAR</th><th>Headline</th>
-      </tr></thead>
-      <tbody>`;
-    for (const e of data.events) {
-      const carClass = e.CAR >= 0 ? 'car-pos' : 'car-neg';
-      html += `<tr>
-        <td>${e.datetime}</td>
-        <td>${e.ticker}</td>
-        <td><span class="badge ${e.label}">${e.label}</span></td>
-        <td>${fmtNum(e.sentiment_score, 2)}</td>
-        <td>${fmtNum(e.confidence, 2)}</td>
-        <td>${e.n_headlines || 1}</td>
-        <td class="${carClass}">${fmtPct(e.CAR)}</td>
-        <td class="title-cell">${e.title}</td>
-      </tr>`;
-    }
-    html += `</tbody></table>`;
-  }
-  html += `</section>`;
+  html += renderEventsTable(data.events, `Event Dataset <span class="count">(${data.events.length} shown, most recent first)</span>`, true);
 
   content.innerHTML = html;
+}
+
+function renderTickerView(data, ticker) {
+  const content = document.getElementById('content');
+  const s = (data.per_ticker || {})[ticker];
+  const tickerEvents = data.events.filter(e => e.ticker === ticker);
+
+  if (!s) {
+    content.innerHTML = `<div class="empty-state"><h3>No data for ${ticker}</h3></div>`;
+    return;
+  }
+
+  let html = '';
+
+  html += `<div class="stat-strip">
+    <div class="stat">
+      <div class="label">Events</div>
+      <div class="value">${s.n_events}</div>
+      <div class="note">unique trading-day observations</div>
+    </div>
+    <div class="stat">
+      <div class="label">Mean CAR</div>
+      <div class="value accent ${s.mean_CAR >= 0 ? '' : ''}">${fmtPct(s.mean_CAR)}</div>
+      <div class="note">T+1 to T+3 abnormal return</div>
+    </div>
+    <div class="stat">
+      <div class="label">Sentiment–return correlation</div>
+      <div class="value">${s.correlation !== null ? fmtNum(s.correlation, 3) : '—'}</div>
+      <div class="note">${s.correlation !== null ? (s.p_value < 0.05 ? 'significant at 0.05' : 'not significant') : 'need ≥4 events'}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Date range</div>
+      <div class="value" style="font-size:18px;">${s.date_range[0]} to ${s.date_range[1]}</div>
+      <div class="note">event dates covered</div>
+    </div>
+  </div>`;
+
+  if (s.correlation === null) {
+    html += `<div class="error-note" style="margin-bottom:32px;">${ticker} has fewer than 4 usable events so far — not enough to compute a per-stock correlation yet. Check back as more data accumulates.</div>`;
+  }
+
+  html += renderEventsTable(tickerEvents, `${ticker} Events <span class="count">(${tickerEvents.length} shown, most recent first)</span>`, false);
+
+  content.innerHTML = html;
+}
+
+function renderEventsTable(events, headingHtml, showTickerColumn) {
+  let html = `<section><h2>${headingHtml}</h2>`;
+
+  if (events.length === 0) {
+    html += `<div class="empty-state"><h3>No usable events yet</h3><p>Events need enough subsequent trading days of price data before they can be included.</p></div>`;
+    html += `</section>`;
+    return html;
+  }
+
+  html += `<table>
+    <thead><tr>
+      <th>Date</th>${showTickerColumn ? '<th>Ticker</th>' : ''}<th>Sentiment</th><th>Score</th><th>Confidence</th><th>Headlines</th><th>CAR</th><th>Headline</th>
+    </tr></thead>
+    <tbody>`;
+  for (const e of events) {
+    const carClass = e.CAR >= 0 ? 'car-pos' : 'car-neg';
+    html += `<tr>
+      <td>${e.datetime}</td>
+      ${showTickerColumn ? `<td><a href="#" class="ticker-link" onclick="switchTab('${e.ticker}'); return false;">${e.ticker}</a></td>` : ''}
+      <td><span class="badge ${e.label}">${e.label}</span></td>
+      <td>${fmtNum(e.sentiment_score, 2)}</td>
+      <td>${fmtNum(e.confidence, 2)}</td>
+      <td>${e.n_headlines || 1}</td>
+      <td class="${carClass}">${fmtPct(e.CAR)}</td>
+      <td class="title-cell">${e.title}</td>
+    </tr>`;
+  }
+  html += `</tbody></table></section>`;
+  return html;
 }
 
 loadResults();
