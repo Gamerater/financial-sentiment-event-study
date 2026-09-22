@@ -3,3 +3,4 @@
 2026-09-19 13:46:03 | success=True | total_headlines=933 | new_this_run=0
 2026-09-20 11:31:44 | success=True | total_headlines=1015 | new_this_run=82
 2026-09-21 11:31:42 | success=True | total_headlines=1793 | new_this_run=11
+2026-09-22 11:31:42 | success=True | total_headlines=2240 | new_this_run=423
